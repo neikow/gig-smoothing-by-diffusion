@@ -14,9 +14,19 @@ FetchContent_Declare(
 # Make OpenMesh available
 FetchContent_MakeAvailable(OpenMesh)
 
+FetchContent_Declare(
+        Eigen
+        GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+        GIT_TAG 3.4.0
+)
+
+FetchContent_MakeAvailable(Eigen)
+
 add_executable(${PROJECT_NAME} main.cpp)
 
 target_link_libraries(${PROJECT_NAME}
         OpenMeshCore
         OpenMeshTools
+
+        Eigen3::Eigen
 )
