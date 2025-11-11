@@ -3,11 +3,6 @@
 #include <iostream>
 #include <string>
 
-#include "Eigen/src/Core/Matrix.h"
-#include "Eigen/src/SparseCore/SparseMatrix.h"
-#include "Eigen/src/SparseCore/SparseUtil.h"
-#include "unsupported/Eigen/src/SparseExtra/BlockOfDynamicSparseMatrix.h"
-
 typedef OpenMesh::TriMesh_ArrayKernelT<> Mesh;
 
 float compute_cotan_weight(
@@ -49,7 +44,7 @@ std::pair<float, float> compute_cotan_weight_for_vertices(
         a = compute_cotan_weight(pk, pi, pj);
     }
 
-    const Mesh::HalfedgeHandle he_opp = mesh.opposite_halfedge_handle(he);
+    const auto he_opp = mesh.opposite_halfedge_handle(he);
     if (!mesh.is_boundary(he_opp)) {
         const Mesh::VertexHandle vh_opp = mesh.to_vertex_handle(mesh.next_halfedge_handle(he_opp));
         const Mesh::Point pl = mesh.point(vh_opp);
@@ -293,9 +288,9 @@ std::vector<std::vector<float> > mat_mul(
     return C;
 }
 
-void laplace_beltrami_matrix_iterative_smoothing(Mesh &mesh, float lambda) {
-    auto L = laplace_beltrami_matrix(mesh);
-    auto L2 = mat_mul(L, L);
+void laplace_beltrami_matrix_iterative_smoothing(Mesh &mesh, const float lambda) {
+    const auto L = laplace_beltrami_matrix(mesh);
+    const auto L2 = mat_mul(L, L);
 
     // Update vertex positions
     for (auto vh: mesh.vertices()) {
@@ -311,16 +306,54 @@ void laplace_beltrami_matrix_iterative_smoothing(Mesh &mesh, float lambda) {
     }
 }
 
+enum Algorithm {
+    UNIFORM_LAPLACE_BELTRAMI,
+    COTANGENTIAL_LAPLACE_BELTRAMI,
+    LAPLACE_BELTRAMI_MATRIX
+};
+
+std::string algorithm_to_string(const Algorithm algo) {
+    switch (algo) {
+        case UNIFORM_LAPLACE_BELTRAMI:
+            return "uniform_laplace_beltrami";
+        case COTANGENTIAL_LAPLACE_BELTRAMI:
+            return "cotangential_laplace_beltrami";
+        case LAPLACE_BELTRAMI_MATRIX:
+            return "laplace_beltrami_matrix";
+    }
+    return "unknown";
+}
+
+std::string get_file_base_name(const std::string &filepath) {
+    const size_t last_slash = filepath.find_last_of("/\\");
+    size_t last_dot = filepath.find_last_of('.');
+
+    if (last_dot == std::string::npos || last_dot < last_slash) {
+        last_dot = filepath.length();
+    }
+
+    return filepath.substr(last_slash + 1, last_dot - last_slash - 1);
+}
+
+std::string get_output_file_name(
+    const std::string &base_name,
+    const Algorithm algo,
+    const int iterations
+) {
+    return "outputs/" + base_name + "_" + algorithm_to_string(algo) + "_iter_" + std::to_string(iterations) + ".obj";
+}
+
 int main(const int argc, char *argv[]) {
     Mesh mesh;
 
     std::string filename = "models/noisyBunnyLowPoly.obj";
+    std::cout << "Loading mesh from: " << filename << std::endl;
 
     if (argc > 1) {
         filename = argv[1];
     }
 
-    std::cout << "Loading mesh from: " << filename << std::endl;
+    Algorithm algo = UNIFORM_LAPLACE_BELTRAMI;
 
     if (!OpenMesh::IO::read_mesh(mesh, filename)) {
         std::cerr << "Error: Cannot read mesh from " << filename << std::endl;
@@ -329,24 +362,40 @@ int main(const int argc, char *argv[]) {
 
     std::cout << "Successfully loaded mesh!" << std::endl;
 
+
     constexpr auto iter_smoothing_ratio = 0.1f;
     constexpr auto iterations = 10;
 
-    for (int i = 0; i < iterations; ++i)
-        iterative_smoothing(mesh, iter_smoothing_ratio);
+    auto alg_func = [&](Mesh &mesh, const float lambda) {
+        Mesh copy = mesh;
 
-    OpenMesh::IO::write_mesh(mesh, "outputs/noisyBunnyLowPoly_iterative_smoothing.obj");
+        switch (algo) {
+            case UNIFORM_LAPLACE_BELTRAMI:
+                iterative_smoothing(copy, lambda);
+                break;
+            case COTANGENTIAL_LAPLACE_BELTRAMI:
+                cotangential_iterative_smoothing(copy, lambda);
+                break;
+            case LAPLACE_BELTRAMI_MATRIX:
+                laplace_beltrami_matrix_iterative_smoothing(copy, lambda);
+                break;
+        }
+    };
 
-    if (!OpenMesh::IO::read_mesh(mesh, filename)) {
-        std::cerr << "Error: Cannot read mesh from " << filename << std::endl;
-        return 1;
+    for (int i = 0; i < iterations; ++i) {
+        std::cout << "Iteration " << (i + 1) << " / " << iterations
+                << " using algorithm: " << algorithm_to_string(algo) << std::endl;
+        alg_func(mesh, iter_smoothing_ratio);
     }
 
-    for (int i = 0; i < iterations; ++i)
-        cotangential_iterative_smoothing(mesh, iter_smoothing_ratio);
+    OpenMesh::IO::write_mesh(
+        mesh,
+        get_output_file_name(
+            get_file_base_name(filename),
+            algo, iterations
+        )
+    );
 
-
-    OpenMesh::IO::write_mesh(mesh, "outputs/noisyBunnyLowPoly_contangential_iterative_smoothing.obj");
 
     return 0;
 }
