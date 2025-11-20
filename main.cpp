@@ -120,6 +120,7 @@ float compute_triangle_area(Mesh &mesh, const Mesh::FaceHandle fh) {
     return 0.5f * cross.norm();
 }
 
+// Calcul de l'aire mixte pour un sommet donné dans une face triangulaire
 float compute_mixed_area(Mesh &mesh, const Mesh::FaceHandle fh, const Mesh::VertexHandle vh) {
     const auto vertices = get_vertices_of_triangle_face(mesh, fh);
     const auto idx = find_vertex_index(vertices, vh);
@@ -283,25 +284,6 @@ void cotangential_iterative_smoothing(Mesh &mesh, const float lambda) {
     }
 }
 
-// Simple matrix multiplication for square matrices
-std::vector<std::vector<float> > mat_mul(
-    const std::vector<std::vector<float> > &A,
-    const std::vector<std::vector<float> > &B
-) {
-    const int n = A.size();
-    std::vector<std::vector<float> > C(n, std::vector<float>(n, 0.0f));
-
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            for (int k = 0; k < n; ++k) {
-                C[i][j] += A[i][k] * B[k][j];
-            }
-        }
-    }
-
-    return C;
-}
-
 enum Algorithm {
     UNIFORM_LAPLACE_BELTRAMI,
     COTANGENTIAL_LAPLACE_BELTRAMI,
@@ -323,6 +305,7 @@ std::string algorithm_to_string(const Algorithm algo) {
     return "unknown";
 }
 
+// Extraire le nom de base d'un fichier (sans chemin ni extension)
 std::string get_file_base_name(const std::string &filepath) {
     const size_t last_slash = filepath.find_last_of("/\\");
     size_t last_dot = filepath.find_last_of('.');
@@ -334,6 +317,7 @@ std::string get_file_base_name(const std::string &filepath) {
     return filepath.substr(last_slash + 1, last_dot - last_slash - 1);
 }
 
+// Générer un nom de fichier de sortie basé sur le nom de base, l'algorithme et le nombre d'itérations
 std::string get_output_file_name(
     const std::string &base_name,
     const Algorithm algo,
@@ -342,6 +326,7 @@ std::string get_output_file_name(
     return "outputs/" + base_name + "_" + algorithm_to_string(algo) + "_iter_" + std::to_string(iterations) + ".obj";
 }
 
+// Variante principale : on applique L² de manière itérative sans construire L ni L² explicitement
 void square_matrix_iterative_smoothing(Mesh &mesh, const float lambda) {
     // Variante optimiser local : pas de construction de L ni L² explicite
     // L²*v[i] = L(L*v)[i] = Σ_{j voisin i} w_ij ( (L*v)[j] - (L*v)[i] )
@@ -431,7 +416,12 @@ int main(const int argc, char *argv[]) {
         filename = argv[1];
     }
 
+    // +=========== ALGORITHMES ET PARAMETRES ===========+
     Algorithm algo = UNIFORM_LAPLACE_BELTRAMI;
+
+    constexpr auto iter_smoothing_ratio = 0.1f;
+    constexpr auto iterations = 10;
+    // +================================================+
 
     if (!OpenMesh::IO::read_mesh(mesh, filename)) {
         std::cerr << "Error: Cannot read mesh from " << filename << std::endl;
@@ -439,9 +429,6 @@ int main(const int argc, char *argv[]) {
     }
 
     std::cout << "Successfully loaded mesh!" << std::endl;
-
-    constexpr auto iter_smoothing_ratio = 0.1f;
-    constexpr auto iterations = 10;
 
     auto alg_func = [&](Mesh &mesh, const float lambda) {
         Mesh copy = mesh;
@@ -469,6 +456,7 @@ int main(const int argc, char *argv[]) {
 
     mkdir("outputs", 0777);
 
+    // Créer un nouveau modèle
     OpenMesh::IO::write_mesh(
         mesh,
         get_output_file_name(
